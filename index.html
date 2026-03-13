@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>健康仪表板</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    h1 { color: #fff; font-size: 28px; }
+    .refresh-btn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .refresh-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .card h3 {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card .value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #333;
+    }
+    .card .unit { font-size: 16px; color: #999; font-weight: 400; }
+    .card .sub { font-size: 13px; color: #999; margin-top: 4px; }
+    .card .sub.success { color: #10b981; }
+    .card .sub.warning { color: #f59e0b; }
+
+    .chart-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+    .chart-card h3 {
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      color: #fff;
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    .meal-list { list-style: none; }
+    .meal-list li {
+      background: rgba(255,255,255,0.1);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .meal-list .meal-type {
+      font-weight: 600;
+      color: #ffd700;
+      margin-right: 8px;
+    }
+
+    .exercise-list { list-style: none; }
+    .exercise-list li {
+      background: #fff;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .exercise-list .exercise-type { font-weight: 600; color: #333; }
+    .exercise-list .exercise-duration { color: #667eea; font-weight: 600; }
+
+    .loading { color: #fff; text-align: center; padding: 40px; }
+    .error { color: #ff5c5c; text-align: center; padding: 40px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>健康仪表板</h1>
+      <button class="refresh-btn" onclick="loadData()">🔄 刷新数据</button>
+    </header>
+
+    <div id="app">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+
+  <script>
+    const DATA_PATH = './profile.json';
+
+    async function loadData() {
+      const app = document.getElementById('app');
+      app.innerHTML = '<div class="loading">加载中...</div>';
+
+      try {
+        const resp = await fetch(DATA_PATH);
+        const data = await resp.json();
+        render(data);
+      } catch (e) {
+        app.innerHTML = `<div class="error">加载失败: ${e.message}</div>`;
+      }
+    }
+
+    function render(data) {
+      const app = document.getElementById('app');
+      const profile = data.profile;
+      const logs = data.logs;
+      const target = profile.goals?.target?.weight || 65;
+      const currentWeight = logs.weight?.[logs.weight.length - 1]?.value || 0;
+      const weightDiff = (currentWeight - target).toFixed(1);
+
+      // 计算今日饮食
+      const today = new Date().toISOString().split('T')[0];
+      const todayDiet = logs.diet?.find(d => d.date === today);
+      const mealsToday = todayDiet?.meals || [];
+
+      // 计算本周运动
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const weekAgoStr = weekAgo.toISOString().split('T')[0];
+      const weekExercises = logs.exercise?.filter(e => e.date >= weekAgoStr) || [];
+      const weekExerciseMins = weekExercises.reduce((sum, e) => sum + (e.duration || 0), 0);
+
+      // 体重趋势数据
+      const weightData = (logs.weight || []).slice(-14);
+      const weightLabels = weightData.map(w => w.date.slice(5));
+      const weightValues = weightData.map(w => w.value);
+
+      app.innerHTML = `
+        <div class="grid">
+          <div class="card">
+            <h3>当前体重</h3>
+            <div class="value">${currentWeight}<span class="unit">kg</span></div>
+            <div class="sub ${weightDiff <= 0 ? 'success' : 'warning'}">
+              目标 ${target}kg，${weightDiff > 0 ? '还差' : '已达成'} ${Math.abs(weightDiff)}kg
+            </div>
+          </div>
+          <div class="card">
+            <h3>今日饮食</h3>
+            <div class="value">${mealsToday.length}<span class="unit">餐</span></div>
+            <div class="sub">已记录 ${mealsToday.length} 餐</div>
+          </div>
+          <div class="card">
+            <h3>本周运动</h3>
+            <div class="value">${weekExerciseMins}<span class="unit">分钟</span></div>
+            <div class="sub">${weekExercises.length} 次运动</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <h3>体重趋势</h3>
+          <canvas id="weightChart"></canvas>
+        </div>
+
+        <h3 class="section-title">今日饮食</h3>
+        <ul class="meal-list">
+          ${mealsToday.length ? mealsToday.map(m => `
+            <li><span class="meal-type">${getMealName(m.type)}</span>${m.food}</li>
+          `).join('') : '<li>暂无记录</li>'}
+        </ul>
+
+        <h3 class="section-title">本周运动</h3>
+        <ul class="exercise-list">
+          ${weekExercises.length ? weekExercises.map(e => `
+            <li>
+              <span class="exercise-type">${e.type}</span>
+              <span class="exercise-duration">${e.duration}分钟</span>
+            </li>
+          `).join('') : '<li>暂无记录</li>'}
+        </ul>
+      `;
+
+      // 绘制图表
+      const ctx = document.getElementById('weightChart');
+      if (ctx) {
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: weightLabels,
+            datasets: [{
+              label: '体重 (kg)',
+              data: weightValues,
+              borderColor: '#667eea',
+              backgroundColor: 'rgba(102, 126, 234, 0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 6,
+              pointBackgroundColor: '#667eea'
+            }, {
+              label: '目标',
+              data: Array(weightLabels.length).fill(target),
+              borderColor: '#10b981',
+              borderDash: [5, 5],
+              pointRadius: 0,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: 'top' }
+            },
+            scales: {
+              y: {
+                min: target - 3,
+                max: target + 3
+              }
+            }
+          }
+        });
+      }
+    }
+
+    function getMealName(type) {
+      const map = {
+        breakfast: '早餐',
+        lunch: '午餐',
+        dinner: '晚餐',
+        snack: '零食'
+      };
+      return map[type] || type;
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
