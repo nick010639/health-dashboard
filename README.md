@@ -2,13 +2,16 @@
 
 显示 health agent 的健康跟踪数据。
 
-## 使用方式
+## 访问地址
 
-在浏览器中打开 `index.html` 文件即可查看仪表板。
+- 线上：https://health.aiwinner.top
+- GitHub：https://github.com/nick010639/health-dashboard
 
-## 数据来源
+## 技术栈
 
-数据从 `../../memory/profile.json` 读取（相对于 index.html 的路径）。
+- 前端：原生 HTML/CSS/JS，单文件
+- 数据存储：Supabase Database
+- 部署：Vercel + Cloudflare 代理
 
 ## 功能
 
@@ -16,4 +19,22 @@
 - 今日饮食记录
 - 本周运动统计
 - 体重趋势折线图（最近14天）
-- 点击"刷新数据"按钮更新显示
+- 自动从 Supabase 读取最新数据
+
+## 开发
+
+```bash
+# 本地预览
+cd dashboard
+python3 -m http.server 8080
+# 浏览器打开 http://localhost:8080
+```
+
+## 部署
+
+代码推送到 GitHub `nick010639/health-dashboard` 仓库后，Vercel 自动部署。
+
+## 数据同步
+
+- 每日早上 9 点自动同步（cron job）
+- 也可手动点击"今日日期"按钮刷新
